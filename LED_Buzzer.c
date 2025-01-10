@@ -7,10 +7,7 @@
 #define LED_2 GPIO_NUM_12
 #define BUZZER GPIO_NUM_2
 
-void setup();
-void loop();
-
-void setup()
+void led_setup()
 {
     // GPIO Configuration for LEDs
     gpio_config_t io_conf;
@@ -43,27 +40,23 @@ void setup()
     printf("Setup complete.\n");
 }
 
-void loop()
+void led_loop(int8_t state)
 {
     // RED LED
-    gpio_set_level(LED_1, 1);
-    gpio_set_level(LED_2, 0);
-    ledc_set_freq(LEDC_LOW_SPEED_MODE, LEDC_TIMER_0, 1000);
-    printf("OFF\n");
-    vTaskDelay(pdMS_TO_TICKS(1000));
+    if (state == 0) {
+        gpio_set_level(LED_1, 1);
+        gpio_set_level(LED_2, 0);
+        ledc_set_freq(LEDC_LOW_SPEED_MODE, LEDC_TIMER_0, 1000);
+        printf("OFF\n");
+        vTaskDelay(pdMS_TO_TICKS(1000));
+    }
 
     // GREEN LED
-    gpio_set_level(LED_1, 0);
-    gpio_set_level(LED_2, 1);
-    ledc_set_freq(LEDC_LOW_SPEED_MODE, LEDC_TIMER_0, 500);
-    printf("ON\n");
-    vTaskDelay(pdMS_TO_TICKS(1000));
-}
-
-void app_main(void)
-{
-    setup();
-    while (1) {
-        loop();
+    if (state == 1) {
+        gpio_set_level(LED_1, 0);
+        gpio_set_level(LED_2, 1);
+        ledc_set_freq(LEDC_LOW_SPEED_MODE, LEDC_TIMER_0, 500);
+        printf("ON\n");
+        vTaskDelay(pdMS_TO_TICKS(1000));
     }
 }
