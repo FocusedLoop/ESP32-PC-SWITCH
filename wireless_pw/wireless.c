@@ -23,12 +23,15 @@ static EventGroupHandle_t wifi_event_group;
 // Event handler
 static void wifi_event_handler(void *arg, esp_event_base_t event_base,
                                int32_t event_id, void *event_data) {
-    if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_START) {
+    if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_START)
+    {
         esp_wifi_connect();
-    } else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_DISCONNECTED) {
+    } else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_DISCONNECTED)
+    {
         ESP_LOGI(TAG, "Disconnected. Reconnecting...");
         esp_wifi_connect();
-    } else if (event_base == IP_EVENT && event_id == IP_EVENT_STA_GOT_IP) {
+    } else if (event_base == IP_EVENT && event_id == IP_EVENT_STA_GOT_IP)
+    {
         ip_event_got_ip_t *event = (ip_event_got_ip_t *)event_data;
         ESP_LOGI(TAG, "Got IP: " IPSTR, IP2STR(&event->ip_info.ip));
         xEventGroupSetBits(wifi_event_group, WIFI_CONNECTED_BIT);
@@ -67,14 +70,52 @@ void wifi_init_sta() {
     ESP_LOGI(TAG, "Wi-Fi initialized.");
 }
 
+static void update_device_state(const char *command, int *device_state)
+{
+    // Turn ON only if currently OFF
+    if (strcmp(command, "DEVICE ON") == 0) {
+        if (*device_state == 0) {
+            ESP_LOGI("DEVICE_STATUS", "Turning On");
+            *device_state = 1;
+            led_loop(*device_state);
+        } else {
+            ESP_LOGI("DEVICE_STATUS", "Device already ON");
+        }
+    }
+    // Turn OFF only if currently ON
+    else if (strcmp(command, "DEVICE OFF") == 0) {
+        if (*device_state == 1) {
+            ESP_LOGI("DEVICE_STATUS", "Turning Off");
+            *device_state = 0;
+            led_loop(*device_state);
+        } else {
+            ESP_LOGI("DEVICE_STATUS", "Device already OFF");
+        }
+    }
+    else {
+        ESP_LOGW("DEVICE_STATUS", "UNKNOWN COMMAND: %s", command);
+    }
+}
+
+void post_handle(httpd_req_t *req, int length)
+{
+    char buffer[128];
+    static int device_state = 0;
+    
+    int ret = httpd_req_recv(req, buffer, length);
+    if (ret > 0) {
+        buffer[ret] = '\0';
+        update_device_state(buffer, &device_state);
+    } else {
+        ESP_LOGW("POST_HANDLE", "No data received.");
+    }
+}
+
 static esp_err_t post_handler(httpd_req_t *req)
 {
     vTaskDelay(1000 / portTICK_PERIOD_MS);
-    httpd_resp_send(req, "URI POST Response ... from ESP32", HTTPD_RESP_USE_STRLEN);
-    printf("HTTP Method: %d\n", req->method);
-    printf("URI: %s\n", req->uri);
-    printf("Content Length: %d\n", req->content_len);
-    led_loop(1);
+    httpd_resp_send(req, "POST successfully sent to ESP32", HTTPD_RESP_USE_STRLEN);
+    post_handle(req, req->content_len);
     return ESP_OK;
 }
 
