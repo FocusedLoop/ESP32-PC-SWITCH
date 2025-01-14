@@ -1,4 +1,6 @@
 #include <stdio.h>
+#include "lwip/inet.h"
+#include <lwip/sockets.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/event_groups.h"
@@ -17,30 +19,70 @@
 static const char *TAG = "WiFiStation";
 static EventGroupHandle_t wifi_event_group;
 
-// Event bits
-#define WIFI_CONNECTED_BIT BIT0
+#define WIFI_CONNECTED_BIT BIT0 // Event bits
+
+// Notes:
+// Use NVS to store wifi details at run time (more secure)
+// Investigate using WPA3 rather than WPA2
+// Use HTTPS rather than http
+
+// Whitelist handle
+static bool is_whitelisted(const char *client_ip)
+{
+    const char *whitelist[] = WHITELIST;
+    for (int i = 0; whitelist[i] != NULL; i++) {
+        if (strcmp(client_ip, whitelist[i]) == 0) {
+            return true;
+        }
+    }
+    return false;
+}
 
 // Event handler
-static void wifi_event_handler(void *arg, esp_event_base_t event_base,
-                               int32_t event_id, void *event_data) {
+static void wifi_event_handler(void *arg, esp_event_base_t event_base, int32_t event_id, void *event_data)
+{
+    static bool previous_retry;
+    static int8_t attempt;
     if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_START)
     {
         esp_wifi_connect();
-    } else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_DISCONNECTED)
+    } 
+    else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_DISCONNECTED)
     {
-        ESP_LOGI(TAG, "Disconnected. Reconnecting...");
-        esp_wifi_connect();
-    } else if (event_base == IP_EVENT && event_id == IP_EVENT_STA_GOT_IP)
+        if (attempt < max_retries)
+        {
+            if (!previous_retry)
+            {
+                ESP_LOGW(TAG, "Disconnected. Reconnecting (attempt %d/%d)...", attempt + 1, max_retries);
+                esp_wifi_connect();
+                previous_retry = true;
+                attempt++;
+            }
+            else
+            {
+                previous_retry = false;
+                esp_wifi_connect();
+            }
+        }
+        else 
+        {
+            ESP_LOGE(TAG, "Disconnected. Max retries exceeded!");
+            xEventGroupClearBits(wifi_event_group, WIFI_CONNECTED_BIT);
+        }
+    } 
+    else if (event_base == IP_EVENT && event_id == IP_EVENT_STA_GOT_IP)
     {
         ip_event_got_ip_t *event = (ip_event_got_ip_t *)event_data;
         ESP_LOGI(TAG, "Got IP: " IPSTR, IP2STR(&event->ip_info.ip));
         xEventGroupSetBits(wifi_event_group, WIFI_CONNECTED_BIT);
+        attempt = 0;
         led_loop(0);
     }
 }
 
 // Wi-Fi initialization
-void wifi_init_sta() {
+void wifi_init_sta()
+{
     wifi_event_group = xEventGroupCreate();
 
     ESP_ERROR_CHECK(esp_netif_init());
@@ -70,6 +112,8 @@ void wifi_init_sta() {
     ESP_LOGI(TAG, "Wi-Fi initialized.");
 }
 
+// Send command to Device
+// curl -X POST http://<ESP32_IP>/ -d "[COMMAND]"
 static void update_device_state(const char *command, int *device_state)
 {
     // Turn ON only if currently OFF
@@ -114,9 +158,26 @@ void post_handle(httpd_req_t *req, int length)
 static esp_err_t post_handler(httpd_req_t *req)
 {
     vTaskDelay(1000 / portTICK_PERIOD_MS);
-    httpd_resp_send(req, "POST successfully sent to ESP32", HTTPD_RESP_USE_STRLEN);
-    post_handle(req, req->content_len);
-    return ESP_OK;
+
+    int sockfd = httpd_req_to_sockfd(req);
+    struct sockaddr_in client_addr;
+    socklen_t addr_len = sizeof(client_addr);
+    getpeername(sockfd, (struct sockaddr *)&client_addr, &addr_len);
+    char client_ip[INET_ADDRSTRLEN];
+    inet_ntop(AF_INET, &client_addr.sin_addr, client_ip, sizeof(client_ip));
+
+    ESP_LOGI(TAG, "Message sent from IP: %s", client_ip);
+    if (!is_whitelisted(client_ip))
+    {
+        httpd_resp_send(req, "POST successfully sent to ESP32", HTTPD_RESP_USE_STRLEN);
+        post_handle(req, req->content_len);
+        return ESP_OK;
+    }
+    else
+    {
+        return ESP_FAIL;
+    }
+    
 }
 
 void server_initiation()
