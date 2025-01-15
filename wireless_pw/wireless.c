@@ -1,6 +1,4 @@
 #include <stdio.h>
-#include "lwip/inet.h"
-#include <lwip/sockets.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/event_groups.h"
@@ -12,6 +10,12 @@
 #include "esp_http_server.h"
 #include "wifi_config.h"
 #include "blink.c"
+
+#include <esp_log.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+#include <errno.h>
 
 #define WIFI_SSID wifi_name
 #define WIFI_PASS wifi_password
@@ -27,16 +31,16 @@ static EventGroupHandle_t wifi_event_group;
 // Use HTTPS rather than http
 
 // Whitelist handle
-static bool is_whitelisted(const char *client_ip)
-{
-    const char *whitelist[] = WHITELIST;
-    for (int i = 0; whitelist[i] != NULL; i++) {
-        if (strcmp(client_ip, whitelist[i]) == 0) {
-            return true;
-        }
-    }
-    return false;
-}
+// static bool is_whitelisted(const char *client_ip)
+// {
+//     const char *whitelist[] = WHITELIST;
+//     for (int i = 0; whitelist[i] != NULL; i++) {
+//         if (strcmp(client_ip, whitelist[i]) == 0) {
+//             return true;
+//         }
+//     }
+//     return false;
+// }
 
 // Event handler
 static void wifi_event_handler(void *arg, esp_event_base_t event_base, int32_t event_id, void *event_data)
@@ -158,26 +162,9 @@ void post_handle(httpd_req_t *req, int length)
 static esp_err_t post_handler(httpd_req_t *req)
 {
     vTaskDelay(1000 / portTICK_PERIOD_MS);
-
-    int sockfd = httpd_req_to_sockfd(req);
-    struct sockaddr_in client_addr;
-    socklen_t addr_len = sizeof(client_addr);
-    getpeername(sockfd, (struct sockaddr *)&client_addr, &addr_len);
-    char client_ip[INET_ADDRSTRLEN];
-    inet_ntop(AF_INET, &client_addr.sin_addr, client_ip, sizeof(client_ip));
-
-    ESP_LOGI(TAG, "Message sent from IP: %s", client_ip);
-    if (!is_whitelisted(client_ip))
-    {
-        httpd_resp_send(req, "POST successfully sent to ESP32", HTTPD_RESP_USE_STRLEN);
-        post_handle(req, req->content_len);
-        return ESP_OK;
-    }
-    else
-    {
-        return ESP_FAIL;
-    }
-    
+    httpd_resp_send(req, "POST successfully sent to ESP32", HTTPD_RESP_USE_STRLEN);
+    post_handle(req, req->content_len);
+    return ESP_OK;
 }
 
 void server_initiation()
