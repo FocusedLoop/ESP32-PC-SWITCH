@@ -3,52 +3,61 @@
 #include "driver/ledc.h"
 #include "driver/gpio.h"
 
-#define LED_1 GPIO_NUM_14
-#define LED_2 GPIO_NUM_12
-#define OUTPUT_PIN_1 GPIO_NUM_26
-#define OUTPUT_PIN_2 GPIO_NUM_27
+#define LED GPIO_NUM_5
+#define OUTPUT_PIN GPIO_NUM_19
+#define INPUT_PIN GPIO_NUM_18
 
-#define BUZZER GPIO_NUM_2
+#define BUZZER GPIO_NUM_4
 
 void led_setup()
 {
-    // GPIO Configuration for LEDs
-    gpio_config_t io_conf;
-    io_conf.intr_type = GPIO_INTR_DISABLE;
-    io_conf.mode = GPIO_MODE_OUTPUT;
-    io_conf.pin_bit_mask = (1ULL << LED_1) | (1ULL << LED_2) | (1ULL << OUTPUT_PIN_1) | (1ULL << OUTPUT_PIN_2); // LED and PC power pins
-    io_conf.pull_down_en = GPIO_PULLDOWN_DISABLE;
-    io_conf.pull_up_en = GPIO_PULLUP_DISABLE;
-    gpio_config(&io_conf);
+    // LED Configuration
+    gpio_config_t led_conf;
+    led_conf.intr_type = GPIO_INTR_DISABLE;
+    led_conf.mode = GPIO_MODE_OUTPUT;
+    led_conf.pin_bit_mask = (1ULL << LED);
+    led_conf.pull_down_en = GPIO_PULLDOWN_ENABLE;
+    led_conf.pull_up_en = GPIO_PULLUP_DISABLE;
+    gpio_config(&led_conf);
+
+    // OUTPUT_PIN Configuration
+    gpio_config_t output_conf;
+    output_conf.intr_type = GPIO_INTR_DISABLE;
+    output_conf.mode = GPIO_MODE_OUTPUT;
+    output_conf.pin_bit_mask = (1ULL << OUTPUT_PIN);
+    output_conf.pull_down_en = GPIO_PULLDOWN_ENABLE;
+    output_conf.pull_up_en = GPIO_PULLUP_DISABLE;
+    gpio_config(&output_conf);
+
+    // INPUT_PIN Configuration
+    gpio_config_t input_conf;
+    input_conf.intr_type = GPIO_INTR_DISABLE;
+    input_conf.mode = GPIO_MODE_INPUT;
+    input_conf.pin_bit_mask = (1ULL << INPUT_PIN);
+    input_conf.pull_down_en = GPIO_PULLDOWN_DISABLE;
+    input_conf.pull_up_en = GPIO_PULLUP_ENABLE;
+    gpio_config(&input_conf);
 
     // Buzzer Configuration
     ledc_timer_config_t ledc_timer = {
-        .duty_resolution = LEDC_TIMER_10_BIT, // 10-bit resolution
-        .freq_hz = 1000,                      // Default frequency: 1 kHz
-        .speed_mode = LEDC_LOW_SPEED_MODE,    // Low-speed mode
-        .timer_num = LEDC_TIMER_0             // Use Timer 0
+        .duty_resolution = LEDC_TIMER_10_BIT,
+        .freq_hz = 1000,
+        .speed_mode = LEDC_LOW_SPEED_MODE,
+        .timer_num = LEDC_TIMER_0
     };
     ledc_timer_config(&ledc_timer);
 
     ledc_channel_config_t ledc_channel = {
-        .channel    = LEDC_CHANNEL_0,         // Use channel 0
-        .duty       = 0,                      // duty cycle
-        .gpio_num   = BUZZER,                 // GPIO pin for the buzzer
-        .speed_mode = LEDC_LOW_SPEED_MODE,    // Low-speed mode
+        .channel    = LEDC_CHANNEL_0,
+        .duty       = 0,
+        .gpio_num   = BUZZER,
+        .speed_mode = LEDC_LOW_SPEED_MODE,
         .hpoint     = 0,
-        .timer_sel  = LEDC_TIMER_0,           // Use Timer 0
+        .timer_sel  = LEDC_TIMER_0,
     };
     ledc_channel_config(&ledc_channel);
 
     printf("Setup complete.\n");
-}
-
-void pc_pw(){
-    gpio_set_level(OUTPUT_PIN_1, 1);
-    gpio_set_level(OUTPUT_PIN_2, 1);
-    vTaskDelay(pdMS_TO_TICKS(1000));
-    gpio_set_level(OUTPUT_PIN_1, 0);
-    gpio_set_level(OUTPUT_PIN_2, 0);
 }
 
 void beep()
@@ -66,24 +75,29 @@ void beep()
     }
 }
 
-void led_loop(int8_t state)
-{
-    // RED LED
-    if (state == 0)
-    {
-        gpio_set_level(LED_1, 1);
-        gpio_set_level(LED_2, 0);
-        printf("OFF\n");
-        vTaskDelay(pdMS_TO_TICKS(1000));
-    }
+int led_loop(int8_t state) {
+    switch (state) {
+        case 1: // Turn On State
+            printf("ON\n");
+            beep();
+            gpio_set_level(OUTPUT_PIN, 1);
+            vTaskDelay(pdMS_TO_TICKS(1000));
+            gpio_set_level(OUTPUT_PIN, 0);
+            return 1;
 
-    // GREEN LED
-    else if (state == 1)
-    {
-        gpio_set_level(LED_1, 0);
-        gpio_set_level(LED_2, 1);
-        printf("ON\n");
-        beep();
-        pc_pw();
+        case 2: // Turn Off State
+            printf("OFF\n");
+            gpio_set_level(OUTPUT_PIN, 1);
+            vTaskDelay(pdMS_TO_TICKS(5000));
+            gpio_set_level(OUTPUT_PIN, 0);
+            return 2;
+
+        default: // Read State
+        {
+            int input_state = gpio_get_level(INPUT_PIN);
+            gpio_set_level(LED, (input_state == 0) ? 1 : 0);
+            //printf("PC Power State: %d\n", input_state);
+            return input_state + 1;
+        }
     }
 }
