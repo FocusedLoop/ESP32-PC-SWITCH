@@ -1,0 +1,6 @@
+build/
+sdkconfig
+test/
+src/wifi_config.h
+.vscode/
+.devcontainer/
